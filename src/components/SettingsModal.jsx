@@ -5,7 +5,9 @@ import { exportDataToJSON, importDataFromJSON } from '../utils/backupHandler';
 import { downloadExcel } from '../utils/excelHandler';
 import CategoryManageModal from './CategoryManageModal';
 
-const SettingsModal = ({ onClose, items = [], onImportComplete, categories = [], onCreateCategory, onUpdateCategory, onDeleteCategory, onReorderCategories, onOpenExcelUpload }) => {
+// SettingsModal에 toast prop 추가 필요 (App.jsx에서 전달)
+
+const SettingsModal = ({ onClose, items = [], onImportComplete, categories = [], onCreateCategory, onUpdateCategory, onDeleteCategory, onReorderCategories, onOpenExcelUpload, toast = null }) => {
     const fileInputRef = useRef(null);
     const [autoLockMinutes, setAutoLockMinutes] = useState(10); // 기본값 10분
     const [showCategoryManage, setShowCategoryManage] = useState(false);
@@ -151,7 +153,11 @@ const SettingsModal = ({ onClose, items = [], onImportComplete, categories = [],
                                         return;
                                     }
                                     downloadExcel(items, categories);
-                                    alert(`엑셀 파일이 다운로드되었습니다. (${items.length}개 항목)`);
+                                    if (toast) {
+                                        toast.success(`엑셀 파일이 다운로드되었습니다. (${items.length}개 항목)`, '다운로드 완료');
+                                    } else {
+                                        alert(`엑셀 파일이 다운로드되었습니다. (${items.length}개 항목)`);
+                                    }
                                 } catch (error) {
                                     console.error('엑셀 다운로드 에러:', error);
                                     alert(`엑셀 다운로드 실패: ${error.message}`);

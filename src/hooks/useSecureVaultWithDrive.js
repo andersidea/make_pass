@@ -214,8 +214,26 @@ export const useSecureVaultWithDrive = (encryptionKey, useDriveSync = false) => 
             } catch (error) {
                 if (isDevelopment) {
                     console.error('Failed to load from Drive:', error);
+                    console.error('   - 에러 타입:', error.constructor.name);
+                    console.error('   - 에러 메시지:', error.message);
+                    
+                    // 네트워크 에러 확인
+                    if (error.message && (
+                        error.message.includes('네트워크') || 
+                        error.message.includes('오프라인') ||
+                        error.message.includes('fetch') ||
+                        !navigator.onLine
+                    )) {
+                        console.warn('⚠️ 네트워크 연결이 없습니다. 로컬 캐시를 사용합니다.');
+                    }
+                    
+                    // 토큰 만료 에러 확인
+                    if (error.message && error.message.includes('토큰이 만료')) {
+                        console.warn('⚠️ 인증 토큰이 만료되었습니다. 다시 로그인해주세요.');
+                    }
                 }
-                // Drive 로드 실패 시 로컬 캐시 시도
+                
+                // Drive 로드 실패 시 로컬 캐시 시도 (오프라인 지원)
                 if (persistentStorage.hasItem('vault_data')) {
                     try {
                         const encryptedData = persistentStorage.getItem('vault_data');

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Star, Clock, Settings, LogOut, Folder, Lock, FileText, ChevronDown, ChevronRight, Plus, CreditCard, User } from 'lucide-react';
 
-const Sidebar = ({ activeCategory, onCategoryChange, stats, onLogout, financeCategories = [], accountCategories = [], memoCategories = [], financeSubCategories = [], webSubCategories = [], memoSubCategories = [], items = [], onOpenSettings, onOpenPasswordGenerator, onQuickAddFinance, onQuickAddAccount, onQuickAddNote, syncStatus, userProfile }) => {
+const Sidebar = ({ activeCategory, onCategoryChange, stats, onLogout, financeCategories = [], accountCategories = [], memoCategories = [], financeSubCategories = [], webSubCategories = [], memoSubCategories = [], items = [], onOpenSettings, onOpenPasswordGenerator, onQuickAddFinance, onQuickAddAccount, onQuickAddNote, syncStatus, userProfile, folderPath = null }) => {
     const [expandedGroups, setExpandedGroups] = useState({
         smartAccess: true,  // SMART ACCESS 그룹 기본 확장
         finance: true,      // 금융 자산 관리 그룹 기본 확장
@@ -344,36 +344,76 @@ const Sidebar = ({ activeCategory, onCategoryChange, stats, onLogout, financeCat
                 {userProfile && (
                     <div 
                         onClick={onLogout}
-                        className="px-3 py-3 rounded-lg bg-slate-700/50 hover:bg-slate-700 cursor-pointer transition-all group"
+                        className="px-4 py-3 rounded-lg bg-gradient-to-r from-slate-700/60 to-slate-700/40 hover:from-slate-700 hover:to-slate-600 cursor-pointer transition-all group border border-slate-600/50"
+                        style={{
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                        }}
                     >
                         <div className="flex items-center gap-3">
                             {/* 프로필 이미지 */}
-                            <div className="relative">
+                            <div className="relative flex-shrink-0">
                                 {userProfile.imageUrl ? (
                                     <img 
                                         src={userProfile.imageUrl} 
                                         alt={userProfile.name || 'User'} 
-                                        className="w-10 h-10 rounded-full object-cover border-2 border-slate-600 group-hover:border-slate-500 transition-colors"
+                                        className="w-12 h-12 rounded-full object-cover border-2 border-slate-500 group-hover:border-slate-400 transition-colors shadow-md"
+                                        onError={(e) => {
+                                            e.target.style.display = 'none';
+                                            if (e.target.nextSibling) {
+                                                e.target.nextSibling.style.display = 'flex';
+                                            }
+                                        }}
                                     />
-                                ) : (
-                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center border-2 border-slate-600 group-hover:border-slate-500 transition-colors">
-                                        <User size={20} className="text-white" />
-                                    </div>
-                                )}
+                                ) : null}
+                                <div 
+                                    className={`w-12 h-12 rounded-full bg-gradient-to-br from-blue-600 to-indigo-600 flex items-center justify-center border-2 border-slate-500 group-hover:border-slate-400 transition-colors shadow-md ${userProfile.imageUrl ? 'hidden' : ''}`}
+                                >
+                                    <User size={24} className="text-white" />
+                                </div>
                                 {/* 동기화 상태 표시등 (초록색) */}
-                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-slate-800" title="구글 드라이브 동기화 중"></div>
+                                <div 
+                                    className="absolute bottom-0 right-0 w-3.5 h-3.5 bg-green-500 rounded-full border-2 border-slate-800 shadow-sm animate-pulse" 
+                                    title="구글 드라이브 동기화 중"
+                                    style={{
+                                        animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                                    }}
+                                ></div>
                             </div>
                             
                             {/* 사용자 정보 */}
                             <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                    <p className="text-sm font-medium text-white truncate">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <p 
+                                        className="text-sm font-semibold text-white"
+                                        style={{
+                                            wordBreak: 'break-word',
+                                            overflowWrap: 'break-word',
+                                            lineHeight: '1.3'
+                                        }}
+                                    >
                                         {userProfile.name || '사용자'}
                                     </p>
                                 </div>
-                                <p className="text-xs text-slate-400 truncate">
+                                <p 
+                                    className="text-xs text-slate-300"
+                                    style={{
+                                        wordBreak: 'break-all',
+                                        overflowWrap: 'break-word',
+                                        lineHeight: '1.2'
+                                    }}
+                                >
                                     {userProfile.email || ''}
                                 </p>
+                                <p className="text-xs text-slate-400 mt-1 flex items-center gap-1">
+                                    <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                                    <span>동기화 중</span>
+                                </p>
+                                {folderPath && (
+                                    <p className="text-xs text-slate-500 mt-1 truncate" title={folderPath}>
+                                        📁 {folderPath}
+                                    </p>
+                                )}
                             </div>
                         </div>
                     </div>

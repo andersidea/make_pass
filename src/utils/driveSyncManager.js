@@ -116,11 +116,13 @@ class DriveSyncManager {
             this.updateSyncStatus({ 
                 isSyncing: false, 
                 lastSyncTime: this.lastSyncTime,
-                error: null 
+                error: null,
+                success: true // 성공 플래그 추가
             });
 
             if (isDevelopment) {
                 console.log('✅ Drive 동기화 완료:', this.lastSyncTime);
+                console.log('   - 저장 위치: Google Drive / SecureVault');
             }
         } catch (error) {
             this.syncError = error.message;

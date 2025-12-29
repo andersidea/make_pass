@@ -13,6 +13,15 @@ const isDevelopment = process.env.NODE_ENV !== 'production';
 const TOKEN_STORAGE_KEY = 'google_access_token';
 const USER_INFO_STORAGE_KEY = 'google_user_info';
 
+// SecureVault 폴더 및 파일 ID 캐싱 (세션 동안 유지)
+const folderCache = {
+    secureVaultFolderId: null,
+    vaultFileId: null
+};
+
+// SecureVault 폴더 이름
+const SECURE_VAULT_FOLDER_NAME = 'SecureVault';
+
 /**
  * Google Identity Services 로드 확인
  */
@@ -269,17 +278,95 @@ const getAccessToken = async () => {
 };
 
 /**
- * 드라이브에서 파일 ID 찾기 (파일명으로 검색, 루트 폴더에서 검색)
- * drive.file 권한을 사용하므로 사용자가 앱에 부여한 파일만 검색 가능
+ * SecureVault 폴더 찾기 또는 생성
+ * @returns {Promise<string>} 폴더 ID
  */
-export const findFileInDrive = async (fileName) => {
+export const getOrCreateSecureVaultFolder = async () => {
+    // 캐시된 폴더 ID가 있으면 반환
+    if (folderCache.secureVaultFolderId) {
+        if (isDevelopment) {
+            console.log('📁 SecureVault 폴더 ID (캐시):', folderCache.secureVaultFolderId);
+        }
+        return folderCache.secureVaultFolderId;
+    }
+
     try {
         const token = await getAccessToken();
         
-        // 일반 드라이브 공간에서 파일 검색 (appDataFolder 제거)
-        // drive.file 권한으로는 사용자가 명시적으로 부여한 파일만 검색 가능
+        // 기존 폴더 검색
+        const searchResponse = await fetch(
+            `https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(SECURE_VAULT_FOLDER_NAME)}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name)&pageSize=1`,
+            {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            }
+        );
+
+        if (searchResponse.ok) {
+            const searchData = await searchResponse.json();
+            if (searchData.files && searchData.files.length > 0) {
+                const folderId = searchData.files[0].id;
+                folderCache.secureVaultFolderId = folderId;
+                if (isDevelopment) {
+                    console.log('✅ 기존 SecureVault 폴더 발견:', folderId);
+                }
+                return folderId;
+            }
+        }
+
+        // 폴더가 없으면 생성
+        if (isDevelopment) {
+            console.log('📁 SecureVault 폴더 생성 중...');
+        }
+        
+        const createResponse = await fetch(
+            'https://www.googleapis.com/drive/v3/files',
+            {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: SECURE_VAULT_FOLDER_NAME,
+                    mimeType: 'application/vnd.google-apps.folder'
+                })
+            }
+        );
+
+        if (!createResponse.ok) {
+            throw new Error(`폴더 생성 실패: ${createResponse.statusText}`);
+        }
+
+        const folderData = await createResponse.json();
+        folderCache.secureVaultFolderId = folderData.id;
+        
+        if (isDevelopment) {
+            console.log('✅ SecureVault 폴더 생성 완료:', folderData.id);
+        }
+        
+        return folderData.id;
+    } catch (error) {
+        if (isDevelopment) {
+            console.error('SecureVault 폴더 찾기/생성 실패:', error);
+        }
+        throw error;
+    }
+};
+
+/**
+ * SecureVault 폴더 내에서 파일 찾기
+ * @param {string} fileName - 파일명
+ * @param {string} folderId - 폴더 ID
+ * @returns {Promise<Object|null>} 파일 정보 또는 null
+ */
+export const findFileInFolder = async (fileName, folderId) => {
+    try {
+        const token = await getAccessToken();
+        
         const response = await fetch(
-            `https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(fileName)}' and trashed=false&fields=files(id,name,modifiedTime)&pageSize=1`,
+            `https://www.googleapis.com/drive/v3/files?q=name='${encodeURIComponent(fileName)}' and '${folderId}' in parents and trashed=false&fields=files(id,name,modifiedTime)&pageSize=1`,
             {
                 headers: {
                     'Authorization': `Bearer ${token}`
@@ -297,6 +384,36 @@ export const findFileInDrive = async (fileName) => {
             return files[0];
         }
         return null;
+    } catch (error) {
+        if (isDevelopment) {
+            console.error('폴더 내 파일 찾기 실패:', error);
+        }
+        throw error;
+    }
+};
+
+/**
+ * 드라이브에서 파일 ID 찾기 (SecureVault 폴더 내에서 검색)
+ * @param {string} fileName - 파일명
+ * @returns {Promise<Object|null>} 파일 정보 또는 null
+ */
+export const findFileInDrive = async (fileName) => {
+    try {
+        // SecureVault 폴더 ID 확보
+        const folderId = await getOrCreateSecureVaultFolder();
+        
+        // 폴더 내에서 파일 검색
+        const file = await findFileInFolder(fileName, folderId);
+        
+        if (file) {
+            // 파일 ID 캐싱
+            folderCache.vaultFileId = file.id;
+            if (isDevelopment) {
+                console.log('✅ vault.json 파일 발견 (캐시 업데이트):', file.id);
+            }
+        }
+        
+        return file;
     } catch (error) {
         if (isDevelopment) {
             console.error('파일 찾기 실패:', error);
@@ -392,21 +509,30 @@ export const uploadFileToDrive = async (fileName, content, mimeType = 'applicati
                 throw fetchError;
             }
         } else {
-            // 새 파일 생성 (루트 폴더에 저장, parents 지정하지 않으면 루트에 저장됨)
+            // 새 파일 생성 (SecureVault 폴더 내에 저장)
             if (isDevelopment) {
                 console.log('✨ 새 파일 생성 경로로 진행...');
                 console.log('   - drive.files.create 호출 준비 중...');
             }
             
+            // SecureVault 폴더 ID 확보
+            const folderId = await getOrCreateSecureVaultFolder();
+            
             const form = new FormData();
             const metadata = {
                 name: fileName,
-                mimeType: mimeType
+                mimeType: mimeType,
+                parents: [folderId] // SecureVault 폴더 내에 생성
             };
             form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
             form.append('file', blob);
 
             const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name';
+            
+            if (isDevelopment) {
+                console.log('   - SecureVault 폴더 ID:', folderId);
+                console.log('   - 파일을 SecureVault 폴더 내에 생성합니다.');
+            }
             if (isDevelopment) {
                 console.log(`✨ 새 파일 생성 요청: POST ${url}`);
                 console.log('📦 요청 메타데이터:', JSON.stringify(metadata, null, 2));
@@ -452,6 +578,33 @@ export const uploadFileToDrive = async (fileName, content, mimeType = 'applicati
                 errorData = JSON.parse(errorText);
             } catch (e) {
                 // JSON 파싱 실패 시 그대로 사용
+            }
+            
+            // 401 에러: 토큰 만료
+            if (response.status === 401) {
+                setStoredToken(null);
+                setStoredUserInfo(null);
+                if (isDevelopment) {
+                    console.error('❌ 인증 토큰이 만료되었습니다. 다시 로그인해주세요.');
+                }
+                throw new Error('인증 토큰이 만료되었습니다. 다시 로그인해주세요.');
+            }
+            
+            // 403 에러: 권한 없음
+            if (response.status === 403) {
+                if (isDevelopment) {
+                    console.error('❌ Google Drive 접근 권한이 없습니다.');
+                    console.error('   - 에러 상세:', errorData || errorText);
+                }
+                throw new Error('Google Drive 접근 권한이 없습니다. 권한을 확인해주세요.');
+            }
+            
+            // 네트워크 에러 (오프라인)
+            if (response.status === 0 || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+                if (isDevelopment) {
+                    console.error('❌ 네트워크 연결이 없습니다. 오프라인 모드로 전환합니다.');
+                }
+                throw new Error('네트워크 연결이 없습니다. 오프라인 모드로 전환합니다.');
             }
             
             if (isDevelopment) {

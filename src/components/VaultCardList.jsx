@@ -154,6 +154,13 @@ const VaultCardList = ({ items, onEdit, onDelete, onToggleFavorite, onCopyToast,
                     <div
                         key={item.id}
                         className={`${cardClasses} relative`}
+                        style={{
+                            minHeight: '280px',
+                            maxHeight: 'none',
+                            padding: '20px',
+                            margin: '0',
+                            overflow: 'visible'
+                        }}
                     >
                         {/* 보안 경고 배너 (주황색 #f97316) */}
                         {securityWarning && (
@@ -166,23 +173,37 @@ const VaultCardList = ({ items, onEdit, onDelete, onToggleFavorite, onCopyToast,
                             </div>
                         )}
 
-                        {/* 액션 버튼 (카드 우측 상단 내부) */}
-                        <div className="absolute top-4 right-4 z-10 flex items-center gap-1">
+                        {/* 액션 버튼 (카드 우측 상단 내부) - 고정 위치 */}
+                        <div 
+                            className="absolute top-4 right-4 z-10 flex items-center gap-1"
+                            style={{
+                                position: 'absolute',
+                                top: '16px',
+                                right: '16px',
+                                zIndex: 10
+                            }}
+                        >
                             <button
-                                onClick={() => onEdit(item)}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onEdit(item);
+                                }}
+                                className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all flex-shrink-0"
                                 title="수정"
+                                style={{ flexShrink: 0 }}
                             >
                                 <Edit2 size={18} />
                             </button>
                             <button
-                                onClick={() => {
+                                onClick={(e) => {
+                                    e.stopPropagation();
                                     if (window.confirm('정말 삭제하시겠습니까?')) {
                                         onDelete(item.id);
                                     }
                                 }}
-                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                                className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all flex-shrink-0"
                                 title="삭제"
+                                style={{ flexShrink: 0 }}
                             >
                                 <Trash2 size={18} />
                             </button>
@@ -218,10 +239,18 @@ const VaultCardList = ({ items, onEdit, onDelete, onToggleFavorite, onCopyToast,
                                 </div>
 
                                 {/* 사이트 이름 및 계정 정보 */}
-                                <div className="flex-1 min-w-0">
+                                <div className="flex-1 min-w-0" style={{ minWidth: 0, overflow: 'hidden' }}>
                                     {/* 사이트 이름 - 큰 글씨, 굵게 */}
                                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                        <h3 className="text-base font-semibold text-gray-900 break-words">
+                                        <h3 
+                                            className="text-base font-semibold text-gray-900"
+                                            style={{
+                                                wordBreak: 'break-word',
+                                                overflowWrap: 'break-word',
+                                                hyphens: 'auto',
+                                                lineHeight: '1.4'
+                                            }}
+                                        >
                                             {item.siteName || '제목 없음'}
                                         </h3>
                                         {/* 상태 배지 */}
@@ -276,7 +305,14 @@ const VaultCardList = ({ items, onEdit, onDelete, onToggleFavorite, onCopyToast,
                                     {/* 첫 번째 계정 정보 - 작은 회색 글씨 (메모 타입이 아닐 때만) */}
                                     {!isMemo && firstAccount && (
                                         <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
-                                            <span className="break-words">
+                                            <span 
+                                                className="break-words"
+                                                style={{
+                                                    wordBreak: 'break-word',
+                                                    overflowWrap: 'break-word',
+                                                    maxWidth: '100%'
+                                                }}
+                                            >
                                                 {firstAccount.displayName || firstAccount.username || '계정 정보 없음'}
                                             </span>
                                             {hasMultipleAccounts && !isExpanded && (

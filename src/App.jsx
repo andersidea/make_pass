@@ -356,10 +356,35 @@ function App() {
     }
   }, [isAuthenticated, syncStatus]); // toast 의존성 제거
 
+  // SecureVault 폴더 경로 가져오기
+  useEffect(() => {
+    if (isAuthenticated && googleAuth.userProfile) {
+      const loadFolderPath = async () => {
+        try {
+          const { getSecureVaultFolderPath } = await import('./utils/driveSync');
+          const path = await getSecureVaultFolderPath();
+          setFolderPath(path);
+        } catch (error) {
+          if (isDevelopment) {
+            console.warn('폴더 경로 로드 실패:', error);
+          }
+        }
+      };
+      loadFolderPath();
+    }
+  }, [isAuthenticated, googleAuth.userProfile]);
+
   // 동기화 상태 콜백 및 암호화 키 설정 (키 생성 자동화 및 순서 보장)
   useEffect(() => {
     // 동기화 상태 콜백은 항상 설정
-    driveSyncManager.setSyncStatusCallback(setSyncStatus);
+    driveSyncManager.setSyncStatusCallback((status) => {
+      setSyncStatus(status);
+      
+      // 동기화 성공 시 토스트 알림
+      if (status.success && !status.isSyncing && status.lastSyncTime) {
+        toast.success('Google Drive에 저장되었습니다.', '동기화 완료');
+      }
+    });
     
     // encryptionKey 생성 및 설정 (우선순위: encryptionKey > userProfile.id)
     const keyToUse = encryptionKey || googleAuth.userProfile?.id;
@@ -857,6 +882,7 @@ function App() {
           onImportComplete={handleImportComplete}
           categories={categories}
           onCreateCategory={createCategory}
+          toast={toast}
           onUpdateCategory={updateCategory}
           onDeleteCategory={(categoryId) => {
             // 카테고리 삭제 전 해당 카테고리의 항목들을 미분류로 이동
@@ -927,6 +953,7 @@ function App() {
         onQuickAddNote={handleQuickAddNote}
         syncStatus={syncStatus}
         userProfile={googleAuth.userProfile}
+        folderPath={folderPath}
       />
 
       {/* 메인 콘텐츠 */}

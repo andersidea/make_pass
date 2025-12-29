@@ -352,228 +352,152 @@ export const downloadExcel = (items, categories, encryptionKey = null) => {
     }
     categoryMap['uncategorized'] = '미분류';
 
-    // 데이터 변환: Site, Accounts, Custom Fields를 row로 분리
-    const rows = [];
+    // 타입별로 데이터 분리 및 필드 재구성
+    // 'Passwords' 시트: 서비스명, 아이디, 비밀번호, 웹사이트, 메모
+    // 'Finance' 시트: 기관명, 계좌번호, 예금주, 보안정보, 메모
+    // 'Notes' 시트: 제목, 내용, 태그, 수정일
     
-    items.forEach((item, index) => {
-        if (!item) {
-            console.warn(`⚠️ [downloadExcel] item[${index}]가 null 또는 undefined입니다.`);
-            return;
-        }
+    const passwordRows = []; // Passwords 시트용
+    const financeRows = [];   // Finance 시트용
+    const memoRows = [];      // Notes 시트용
+    
+    items.forEach((item) => {
+        if (!item) return;
         
-        const categoryName = categoryMap[item.categoryId] || '미분류';
-        let itemRowCount = 0; // 이 아이템에서 생성된 row 개수 추적
+        // 아이템 타입 판별
+        const itemType = item.type || (
+            item.institutionName || item.accountCardNumber 
+                ? 'finance' 
+                : (item.memo && (!item.accounts || item.accounts.length === 0)) 
+                    ? 'memo' 
+                    : 'web'
+        );
         
-        // 디버깅: 각 아이템 구조 로깅 (처음 3개만)
-        if (index < 3) {
-            console.log(`📦 [downloadExcel] item[${index}] 구조:`, {
-                id: item.id,
-                type: item.type,
-                categoryId: item.categoryId,
-                siteName: item.siteName,
-                serviceName: item.serviceName,
-                institutionName: item.institutionName,
-                hasAccounts: !!item.accounts,
-                accountsLength: item.accounts?.length || 0,
-                hasAccountsEncrypted: !!item.accountsEncrypted,
-                hasCustomFields: !!item.customFields,
-                customFieldsLength: item.customFields?.length || 0,
-                hasMemo: !!item.memo,
-                hasTags: !!(item.tags && item.tags.length > 0),
-                hasFinanceFields: !!(item.institutionName || item.accountCardNumber)
-            });
-        }
-        
-        // 메모 타입 처리 (메모 타입이거나 memo 필드가 있는 경우)
-        const isMemoType = item.type === 'memo' || (item.memo && (!item.accounts || item.accounts.length === 0));
-        if (isMemoType && item.memo) {
-            rows.push({
-                site_name: item.siteName || item.title || '',
-                url: item.url || '',
-                category_name: categoryName,
-                field_name: 'memo',
-                field_value: String(item.memo || '')
-            });
-            itemRowCount++;
-        }
-        
-        // 태그 처리 (메모 타입)
-        if (isMemoType && item.tags && Array.isArray(item.tags) && item.tags.length > 0) {
-            rows.push({
-                site_name: item.siteName || item.title || '',
-                url: item.url || '',
-                category_name: categoryName,
-                field_name: 'tags',
-                field_value: item.tags.join(', ')
-            });
-            itemRowCount++;
-        }
-        
-        // 금융 타입 처리
-        const isFinanceType = item.type === 'finance' || item.institutionName || item.accountCardNumber || item.accountHolder;
-        if (isFinanceType) {
-            // 기관명
-            if (item.institutionName) {
-                rows.push({
-                    site_name: item.siteName || item.institutionName || '',
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: 'institution_name',
-                    field_value: String(item.institutionName)
-                });
-                itemRowCount++;
-            }
-            // 계좌/카드번호
-            if (item.accountCardNumber) {
-                rows.push({
-                    site_name: item.siteName || item.institutionName || '',
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: 'account_card_number',
-                    field_value: String(item.accountCardNumber)
-                });
-                itemRowCount++;
-            }
-            // 예금주/카드주
-            if (item.accountHolder) {
-                rows.push({
-                    site_name: item.siteName || item.institutionName || '',
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: 'account_holder',
-                    field_value: String(item.accountHolder)
-                });
-                itemRowCount++;
-            }
-            // 유효기간
-            if (item.expiryDate) {
-                rows.push({
-                    site_name: item.siteName || item.institutionName || '',
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: 'expiry_date',
-                    field_value: String(item.expiryDate)
-                });
-                itemRowCount++;
-            }
-            // 이용 한도
-            if (item.creditLimit !== undefined && item.creditLimit !== null && item.creditLimit !== '') {
-                rows.push({
-                    site_name: item.siteName || item.institutionName || '',
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: 'credit_limit',
-                    field_value: String(item.creditLimit)
-                });
-                itemRowCount++;
-            }
-            // 결제일
-            if (item.paymentDate !== undefined && item.paymentDate !== null && item.paymentDate !== '') {
-                rows.push({
-                    site_name: item.siteName || item.institutionName || '',
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: 'payment_date',
-                    field_value: String(item.paymentDate)
-                });
-                itemRowCount++;
-            }
-        }
-        
-        // Accounts 처리 (비밀번호 타입 - accountsEncrypted가 있으면 복호화 불가능하므로 이미 복호화된 accounts 사용)
-        if (item.accounts && Array.isArray(item.accounts) && item.accounts.length > 0) {
-            item.accounts.forEach((account, accIndex) => {
-                if (!account) return;
-                
-                // username row
-                if (account.username) {
-                    rows.push({
-                        site_name: item.siteName || item.serviceName || item.institutionName || '',
-                        url: item.url || '',
-                        category_name: categoryName,
-                        field_name: 'username',
-                        field_value: String(account.username)
+        // 비밀번호 타입 (web) → 'Passwords' 시트
+        if (itemType === 'web' || (item.accounts && item.accounts.length > 0)) {
+            const siteName = item.siteName || item.serviceName || '';
+            const url = item.url || '';
+            const memo = item.memo || '';
+            
+            // accounts가 있으면 각 계정별로 row 생성
+            if (item.accounts && Array.isArray(item.accounts) && item.accounts.length > 0) {
+                item.accounts.forEach((account) => {
+                    passwordRows.push({
+                        '서비스명': siteName,
+                        '아이디': account.username || '',
+                        '비밀번호': account.password || '',
+                        '웹사이트': url,
+                        '메모': memo || (account.memo || '')
                     });
-                    itemRowCount++;
-                }
-                // password row
-                if (account.password) {
-                    rows.push({
-                        site_name: item.siteName || item.serviceName || item.institutionName || '',
-                        url: item.url || '',
-                        category_name: categoryName,
-                        field_name: 'password',
-                        field_value: String(account.password)
-                    });
-                    itemRowCount++;
-                }
-            });
-        }
-        
-        // Custom Fields 처리 (모든 타입)
-        if (item.customFields && Array.isArray(item.customFields) && item.customFields.length > 0) {
-            item.customFields.forEach((field, fieldIndex) => {
-                if (!field) return;
-                
-                const fieldName = field.field_name || '';
-                const fieldValue = field.field_value || '';
-                
-                // 빈 필드는 제외하지 않고 포함 (사용자가 의도적으로 추가했을 수 있음)
-                rows.push({
-                    site_name: item.siteName || item.serviceName || item.institutionName || item.title || '',
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: String(fieldName),
-                    field_value: String(fieldValue)
                 });
-                itemRowCount++;
-            });
-        }
-        
-        // 어떤 데이터도 없는 경우 기본 row 하나 생성 (제목만이라도)
-        if (itemRowCount === 0) {
-            const siteName = item.siteName || item.serviceName || item.institutionName || item.title || '';
-            if (siteName) {
-                rows.push({
-                    site_name: siteName,
-                    url: item.url || '',
-                    category_name: categoryName,
-                    field_name: '',
-                    field_value: ''
-                });
-                itemRowCount++;
             } else {
-                console.warn(`⚠️ [downloadExcel] item[${index}]에 제목도 없어 기본 row를 생성할 수 없습니다.`, item);
+                // accounts가 없어도 서비스명만 있으면 row 생성
+                if (siteName) {
+                    passwordRows.push({
+                        '서비스명': siteName,
+                        '아이디': '',
+                        '비밀번호': '',
+                        '웹사이트': url,
+                        '메모': memo
+                    });
+                }
             }
         }
         
-        // 디버깅: 각 아이템에서 생성된 row 개수 (처음 3개만)
-        if (index < 3) {
-            console.log(`   → item[${index}]에서 ${itemRowCount}개의 row 생성됨`);
+        // 금융 타입 → 'Finance' 시트
+        if (itemType === 'finance' || item.institutionName || item.accountCardNumber) {
+            const institutionName = item.institutionName || item.siteName || '';
+            const accountNumber = item.accountCardNumber || '';
+            const accountHolder = item.accountHolder || '';
+            
+            // 보안정보: 유효기간, 보안번호, 이용한도 등을 조합
+            const securityInfo = [];
+            if (item.expiryDate) securityInfo.push(`유효기간: ${item.expiryDate}`);
+            if (item.securityCode) securityInfo.push(`보안번호: ${item.securityCode}`);
+            if (item.creditLimit) securityInfo.push(`이용한도: ${item.creditLimit}`);
+            if (item.paymentDate) securityInfo.push(`결제일: ${item.paymentDate}`);
+            const securityInfoText = securityInfo.join(', ');
+            
+            const memo = item.memo || '';
+            
+            financeRows.push({
+                '기관명': institutionName,
+                '계좌번호': accountNumber,
+                '예금주': accountHolder,
+                '보안정보': securityInfoText,
+                '메모': memo
+            });
+        }
+        
+        // 메모 타입 → 'Notes' 시트
+        if (itemType === 'memo' || (item.memo && (!item.accounts || item.accounts.length === 0))) {
+            const title = item.siteName || item.title || '';
+            const content = item.memo || '';
+            const tags = (item.tags && Array.isArray(item.tags)) ? item.tags.join(', ') : '';
+            const modifiedDate = item.lastModified || item.updatedAt || item.createdAt || '';
+            const formattedDate = modifiedDate ? new Date(modifiedDate).toLocaleDateString('ko-KR') : '';
+            
+            memoRows.push({
+                '제목': title,
+                '내용': content,
+                '태그': tags,
+                '수정일': formattedDate
+            });
         }
     });
 
-    // 로그: 변환된 데이터 확인
-    console.log('📋 [downloadExcel] 변환된 rows 개수:', rows.length);
-    console.log('   - rows 샘플 (최대 3개):', rows.slice(0, 3));
+    console.log('📊 [downloadExcel] 타입별 데이터 분리 완료:');
+    console.log('   - Passwords 시트:', passwordRows.length, '개');
+    console.log('   - Finance 시트:', financeRows.length, '개');
+    console.log('   - Notes 시트:', memoRows.length, '개');
 
-    // 데이터가 없으면 에러
-    if (rows.length === 0) {
-        console.warn('⚠️ [downloadExcel] 변환된 데이터가 없습니다.');
-        throw new Error('다운로드할 데이터가 없습니다. 데이터를 확인해주세요.');
-    }
-
-    // 워크북 생성
+    // 워크북 생성 (멀티 시트)
     try {
-        const worksheet = XLSX.utils.json_to_sheet(rows);
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Sites');
+        
+        // 'Passwords' 시트 생성 (데이터가 없어도 헤더만 생성)
+        const passwordHeaders = ['서비스명', '아이디', '비밀번호', '웹사이트', '메모'];
+        if (passwordRows.length > 0) {
+            const passwordSheet = XLSX.utils.json_to_sheet(passwordRows);
+            XLSX.utils.book_append_sheet(workbook, passwordSheet, 'Passwords');
+        } else {
+            // 데이터가 없어도 헤더만 있는 빈 시트 생성
+            const emptyPasswordSheet = XLSX.utils.aoa_to_sheet([passwordHeaders]);
+            XLSX.utils.book_append_sheet(workbook, emptyPasswordSheet, 'Passwords');
+        }
+        
+        // 'Finance' 시트 생성 (데이터가 없어도 헤더만 생성)
+        const financeHeaders = ['기관명', '계좌번호', '예금주', '보안정보', '메모'];
+        if (financeRows.length > 0) {
+            const financeSheet = XLSX.utils.json_to_sheet(financeRows);
+            XLSX.utils.book_append_sheet(workbook, financeSheet, 'Finance');
+        } else {
+            // 데이터가 없어도 헤더만 있는 빈 시트 생성
+            const emptyFinanceSheet = XLSX.utils.aoa_to_sheet([financeHeaders]);
+            XLSX.utils.book_append_sheet(workbook, emptyFinanceSheet, 'Finance');
+        }
+        
+        // 'Notes' 시트 생성 (데이터가 없어도 헤더만 생성)
+        const notesHeaders = ['제목', '내용', '태그', '수정일'];
+        if (memoRows.length > 0) {
+            const memoSheet = XLSX.utils.json_to_sheet(memoRows);
+            XLSX.utils.book_append_sheet(workbook, memoSheet, 'Notes');
+        } else {
+            // 데이터가 없어도 헤더만 있는 빈 시트 생성
+            const emptyNotesSheet = XLSX.utils.aoa_to_sheet([notesHeaders]);
+            XLSX.utils.book_append_sheet(workbook, emptyNotesSheet, 'Notes');
+        }
 
         // 파일 다운로드
         const fileName = `password_backup_${new Date().toISOString().split('T')[0]}.xlsx`;
         XLSX.writeFile(workbook, fileName);
         
         console.log('✅ [downloadExcel] 파일 다운로드 완료:', fileName);
+        console.log('   - 시트 개수:', workbook.SheetNames.length);
+        console.log('   - 시트 목록:', workbook.SheetNames.join(', '));
+        console.log('   - Passwords 시트:', passwordRows.length, '개 행');
+        console.log('   - Finance 시트:', financeRows.length, '개 행');
+        console.log('   - Notes 시트:', memoRows.length, '개 행');
     } catch (error) {
         console.error('❌ [downloadExcel] 파일 생성 실패:', error);
         throw error;
