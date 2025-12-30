@@ -183,3 +183,4 @@ const clientId = GOOGLE_CLIENT_ID || import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 **상태**: ✅ **Scope 정규화 완료, Client ID 및 리디렉션 URI 확인 필요**
 
 
+

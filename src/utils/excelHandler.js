@@ -1,65 +1,174 @@
 import * as XLSX from 'xlsx';
 
 /**
- * 엑셀 파일 파싱 (XLSX)
- * 템플릿: site_name, url, category_name, field_name, field_value
+ * 헤더 정규화 및 키워드 매핑 함수 (유연한 헤더 인식)
+ */
+const normalizeHeader = (header) => {
+    return String(header).toLowerCase().replace(/[_\s]/g, '');
+};
+
+/**
+ * 헤더에서 키워드를 찾아 매핑 (한국어/영어 모두 지원)
+ */
+const mapHeaderToField = (header, normalized) => {
+    // 서비스명 / 사이트명 (웹 타입)
+    if (normalized.includes('서비스명') || normalized.includes('서비스') || 
+        normalized.includes('sitename') || normalized.includes('servicename') ||
+        (normalized.includes('site') && !normalized.includes('field'))) {
+        return 'site_name';
+    }
+    
+    // 기관명 (금융 타입)
+    if (normalized.includes('기관명') || normalized.includes('기관') ||
+        normalized.includes('institutionname') || normalized.includes('institution') ||
+        normalized.includes('bankname') || normalized.includes('bank')) {
+        return 'institution_name';
+    }
+    
+    // 제목 (메모 타입)
+    if (normalized.includes('제목') || normalized.includes('title')) {
+        return 'title';
+    }
+    
+    // URL
+    if (normalized.includes('url') || normalized.includes('웹사이트') || normalized.includes('웹주소')) {
+        return 'url';
+    }
+    
+    // 계좌번호 (금융 타입)
+    if (normalized.includes('계좌번호') || normalized.includes('계좌') ||
+        normalized.includes('accountnumber') || normalized.includes('account') ||
+        normalized.includes('cardnumber') || normalized.includes('카드번호')) {
+        return 'account_number';
+    }
+    
+    // 예금주 (금융 타입)
+    if (normalized.includes('예금주') || normalized.includes('accountHolder') ||
+        normalized.includes('accountholder') || normalized.includes('holder')) {
+        return 'account_holder';
+    }
+    
+    // 비밀번호
+    if (normalized.includes('비밀번호') || normalized.includes('password') ||
+        normalized.includes('pw') || normalized.includes('pass')) {
+        return 'password';
+    }
+    
+    // 아이디
+    if (normalized.includes('아이디') || normalized.includes('id') ||
+        normalized.includes('username') || normalized.includes('userid')) {
+        return 'username';
+    }
+    
+    // 카테고리
+    if (normalized.includes('category') || normalized.includes('카테고리') ||
+        normalized.includes('분류')) {
+        return 'category_name';
+    }
+    
+    // 내용 (메모 타입)
+    if (normalized.includes('내용') || normalized.includes('content') ||
+        normalized.includes('memo') || normalized.includes('메모') ||
+        normalized.includes('본문')) {
+        return 'content';
+    }
+    
+    // 태그
+    if (normalized.includes('태그') || normalized.includes('tag') ||
+        normalized.includes('tags')) {
+        return 'tags';
+    }
+    
+    // 필드명
+    if (normalized.includes('fieldname') || (normalized.includes('field') && normalized.includes('name')) ||
+        normalized.includes('필드명')) {
+        return 'field_name';
+    }
+    
+    // 필드값
+    if (normalized.includes('fieldvalue') || (normalized.includes('field') && normalized.includes('value')) ||
+        normalized.includes('필드값')) {
+        return 'field_value';
+    }
+    
+    // 수정일
+    if (normalized.includes('수정일') || normalized.includes('modified') ||
+        normalized.includes('updated') || normalized.includes('lastmodified')) {
+        return 'modified_date';
+    }
+    
+    return null;
+};
+
+/**
+ * 엑셀/CSV 파일 파싱 (통합 함수 - 확장자 무관)
+ * CSV와 XLSX 모두 지원
  */
 export const parseExcelFile = async (file) => {
     return new Promise((resolve, reject) => {
+        const fileName = file.name.toLowerCase();
+        const isCSV = fileName.endsWith('.csv');
+        
         const reader = new FileReader();
 
         reader.onload = (e) => {
             try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
+                let workbook;
+                let jsonData;
+                
+                if (isCSV) {
+                    // CSV 파일 처리
+                    const csvText = e.target.result;
+                    workbook = XLSX.read(csvText, { type: 'string' });
+                } else {
+                    // XLSX/XLS 파일 처리
+                    const data = new Uint8Array(e.target.result);
+                    workbook = XLSX.read(data, { type: 'array' });
+                }
+                
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet);
+                jsonData = XLSX.utils.sheet_to_json(worksheet);
 
                 if (!jsonData || jsonData.length === 0) {
                     resolve([]);
                     return;
                 }
 
-                // 헤더 정규화 (대소문자, 언더스코어 무시)
-                const normalizeHeader = (header) => {
-                    return String(header).toLowerCase().replace(/[_\s]/g, '');
-                };
-
-                // 첫 번째 행에서 헤더 찾기
+                // 첫 번째 행에서 헤더 찾기 (유연한 매핑)
                 const headers = Object.keys(jsonData[0] || {});
                 const headerMap = {};
                 headers.forEach(h => {
                     const normalized = normalizeHeader(h);
-                    if (normalized.includes('sitename') || (normalized.includes('site') && !normalized.includes('field'))) {
-                        headerMap.site_name = h;
-                    } else if (normalized.includes('url')) {
-                        headerMap.url = h;
-                    } else if (normalized.includes('category')) {
-                        headerMap.category_name = h;
-                    } else if (normalized.includes('fieldname') || (normalized.includes('field') && normalized.includes('name'))) {
-                        headerMap.field_name = h;
-                    } else if (normalized.includes('fieldvalue') || (normalized.includes('field') && normalized.includes('value'))) {
-                        headerMap.field_value = h;
+                    const fieldType = mapHeaderToField(h, normalized);
+                    if (fieldType) {
+                        headerMap[fieldType] = h;
                     }
                 });
 
                 const rows = [];
                 jsonData.forEach(row => {
-                    const siteName = headerMap.site_name && row[headerMap.site_name] ? String(row[headerMap.site_name]).trim() : '';
-                    const url = headerMap.url && row[headerMap.url] ? String(row[headerMap.url]).trim() : '';
-                    const categoryName = headerMap.category_name && row[headerMap.category_name] ? String(row[headerMap.category_name]).trim() : '';
-                    const fieldName = headerMap.field_name && row[headerMap.field_name] ? String(row[headerMap.field_name]).trim() : '';
-                    const fieldValue = headerMap.field_value && row[headerMap.field_value] ? String(row[headerMap.field_value]).trim() : '';
-
-                    if (siteName || url) {
-                        rows.push({
-                            site_name: siteName,
-                            url: url,
-                            category_name: categoryName,
-                            field_name: fieldName,
-                            field_value: fieldValue
-                        });
+                    const mappedRow = {};
+                    
+                    // 기본 필드 매핑
+                    mappedRow.site_name = headerMap.site_name && row[headerMap.site_name] ? String(row[headerMap.site_name]).trim() : '';
+                    mappedRow.institution_name = headerMap.institution_name && row[headerMap.institution_name] ? String(row[headerMap.institution_name]).trim() : '';
+                    mappedRow.title = headerMap.title && row[headerMap.title] ? String(row[headerMap.title]).trim() : '';
+                    mappedRow.url = headerMap.url && row[headerMap.url] ? String(row[headerMap.url]).trim() : '';
+                    mappedRow.account_number = headerMap.account_number && row[headerMap.account_number] ? String(row[headerMap.account_number]).trim() : '';
+                    mappedRow.account_holder = headerMap.account_holder && row[headerMap.account_holder] ? String(row[headerMap.account_holder]).trim() : '';
+                    mappedRow.password = headerMap.password && row[headerMap.password] ? String(row[headerMap.password]).trim() : '';
+                    mappedRow.username = headerMap.username && row[headerMap.username] ? String(row[headerMap.username]).trim() : '';
+                    mappedRow.category_name = headerMap.category_name && row[headerMap.category_name] ? String(row[headerMap.category_name]).trim() : '';
+                    mappedRow.content = headerMap.content && row[headerMap.content] ? String(row[headerMap.content]).trim() : '';
+                    mappedRow.tags = headerMap.tags && row[headerMap.tags] ? String(row[headerMap.tags]).trim() : '';
+                    mappedRow.field_name = headerMap.field_name && row[headerMap.field_name] ? String(row[headerMap.field_name]).trim() : '';
+                    mappedRow.field_value = headerMap.field_value && row[headerMap.field_value] ? String(row[headerMap.field_value]).trim() : '';
+                    mappedRow.modified_date = headerMap.modified_date && row[headerMap.modified_date] ? String(row[headerMap.modified_date]).trim() : '';
+                    
+                    // 데이터가 하나라도 있으면 추가 (site_name, institution_name, title 중 하나라도 있으면)
+                    if (mappedRow.site_name || mappedRow.institution_name || mappedRow.title || mappedRow.url) {
+                        rows.push(mappedRow);
                     }
                 });
 
@@ -70,12 +179,18 @@ export const parseExcelFile = async (file) => {
         };
 
         reader.onerror = () => reject(new Error('파일 읽기 실패'));
-        reader.readAsArrayBuffer(file);
+        
+        if (isCSV) {
+            reader.readAsText(file, 'UTF-8');
+        } else {
+            reader.readAsArrayBuffer(file);
+        }
     });
 };
 
 /**
  * CSV 텍스트 파싱 (XLSX 라이브러리 사용)
+ * @deprecated parseExcelFile이 CSV/XLSX 모두 지원하므로 이 함수는 하위 호환성을 위해 유지
  */
 export const parseCSVText = (csvText) => {
     try {
@@ -87,44 +202,29 @@ export const parseCSVText = (csvText) => {
 
         if (!jsonData || jsonData.length === 0) return [];
 
-        // 헤더 정규화
-        const normalizeHeader = (header) => {
-            return String(header).toLowerCase().replace(/[_\s]/g, '');
-        };
-
         const headers = Object.keys(jsonData[0] || {});
         const headerMap = {};
         headers.forEach(h => {
             const normalized = normalizeHeader(h);
-            if (normalized.includes('sitename') || (normalized.includes('site') && !normalized.includes('field'))) {
-                headerMap.site_name = h;
-            } else if (normalized.includes('url')) {
-                headerMap.url = h;
-            } else if (normalized.includes('category')) {
-                headerMap.category_name = h;
-            } else if (normalized.includes('fieldname') || (normalized.includes('field') && normalized.includes('name'))) {
-                headerMap.field_name = h;
-            } else if (normalized.includes('fieldvalue') || (normalized.includes('field') && normalized.includes('value'))) {
-                headerMap.field_value = h;
+            const fieldType = mapHeaderToField(h, normalized);
+            if (fieldType) {
+                headerMap[fieldType] = h;
             }
         });
 
         const rows = [];
         jsonData.forEach(row => {
-            const siteName = headerMap.site_name && row[headerMap.site_name] ? String(row[headerMap.site_name]).trim() : '';
-            const url = headerMap.url && row[headerMap.url] ? String(row[headerMap.url]).trim() : '';
-            const categoryName = headerMap.category_name && row[headerMap.category_name] ? String(row[headerMap.category_name]).trim() : '';
-            const fieldName = headerMap.field_name && row[headerMap.field_name] ? String(row[headerMap.field_name]).trim() : '';
-            const fieldValue = headerMap.field_value && row[headerMap.field_value] ? String(row[headerMap.field_value]).trim() : '';
+            const mappedRow = {};
+            mappedRow.site_name = headerMap.site_name && row[headerMap.site_name] ? String(row[headerMap.site_name]).trim() : '';
+            mappedRow.institution_name = headerMap.institution_name && row[headerMap.institution_name] ? String(row[headerMap.institution_name]).trim() : '';
+            mappedRow.title = headerMap.title && row[headerMap.title] ? String(row[headerMap.title]).trim() : '';
+            mappedRow.url = headerMap.url && row[headerMap.url] ? String(row[headerMap.url]).trim() : '';
+            mappedRow.category_name = headerMap.category_name && row[headerMap.category_name] ? String(row[headerMap.category_name]).trim() : '';
+            mappedRow.field_name = headerMap.field_name && row[headerMap.field_name] ? String(row[headerMap.field_name]).trim() : '';
+            mappedRow.field_value = headerMap.field_value && row[headerMap.field_value] ? String(row[headerMap.field_value]).trim() : '';
 
-            if (siteName || url) {
-                rows.push({
-                    site_name: siteName,
-                    url: url,
-                    category_name: categoryName,
-                    field_name: fieldName,
-                    field_value: fieldValue
-                });
+            if (mappedRow.site_name || mappedRow.institution_name || mappedRow.title || mappedRow.url) {
+                rows.push(mappedRow);
             }
         });
 
@@ -174,21 +274,47 @@ export const processExcelData = (rows, existingCategories, existingItems, onCrea
         stats.categoriesCreated++;
     });
 
-    // Site별로 그룹화 및 처리
+    // 항목별로 그룹화 및 처리 (웹, 금융, 메모 모두 지원)
     rows.forEach(row => {
-        if (!row.site_name && !row.url) return;
-
-        const siteKey = `${(row.site_name || '').trim()}|${(row.url || '').trim()}`;
+        // 데이터 타입 판별: institution_name이 있으면 금융, title/content가 있으면 메모, 그 외는 웹
+        const isFinance = row.institution_name && row.institution_name.trim();
+        const isMemo = (row.title && row.title.trim()) || (row.content && row.content.trim());
+        const isWeb = (row.site_name && row.site_name.trim()) || (row.url && row.url.trim());
         
-        if (!siteMap[siteKey]) {
-            // 기존 Site 찾기
-            const existingItem = existingItems.find(item => 
-                (item.siteName || '').trim() === (row.site_name || '').trim() &&
-                (item.url || '').trim() === (row.url || '').trim()
-            );
+        // 데이터가 하나도 없으면 스킵
+        if (!isFinance && !isMemo && !isWeb) return;
+
+        // 키 생성: 타입별로 다른 키 사용
+        let itemKey;
+        if (isFinance) {
+            itemKey = `finance|${(row.institution_name || '').trim()}|${(row.account_number || '').trim()}`;
+        } else if (isMemo) {
+            itemKey = `memo|${(row.title || '').trim()}`;
+        } else {
+            itemKey = `web|${(row.site_name || '').trim()}|${(row.url || '').trim()}`;
+        }
+        
+        if (!siteMap[itemKey]) {
+            // 기존 항목 찾기
+            let existingItem = null;
+            if (isFinance) {
+                existingItem = existingItems.find(item => 
+                    item.institutionName && (item.institutionName || '').trim() === (row.institution_name || '').trim() &&
+                    item.accountCardNumber && (item.accountCardNumber || '').trim() === (row.account_number || '').trim()
+                );
+            } else if (isMemo) {
+                existingItem = existingItems.find(item => 
+                    item.siteName && (item.siteName || '').trim() === (row.title || '').trim()
+                );
+            } else {
+                existingItem = existingItems.find(item => 
+                    (item.siteName || '').trim() === (row.site_name || '').trim() &&
+                    (item.url || '').trim() === (row.url || '').trim()
+                );
+            }
 
             if (existingItem) {
-                siteMap[siteKey] = {
+                siteMap[itemKey] = {
                     item: { 
                         ...existingItem, 
                         accounts: [...(existingItem.accounts || [])],
@@ -202,18 +328,37 @@ export const processExcelData = (rows, existingCategories, existingItems, onCrea
                     : 'uncategorized';
                 
                 const newItem = {
-                    siteName: (row.site_name || '').trim(),
-                    url: (row.url || '').trim(),
+                    siteName: isFinance ? (row.institution_name || '').trim() : (isMemo ? (row.title || '').trim() : (row.site_name || '').trim()),
+                    url: isWeb ? (row.url || '').trim() : '',
                     categoryId: categoryId,
                     accounts: [], // Multi-Account
                     customFields: [],
-                    createdAt: new Date().toISOString()
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    lastModified: new Date().toISOString()
                 };
+                
+                // 금융 타입 필드 추가
+                if (isFinance) {
+                    newItem.type = 'finance';
+                    newItem.institutionName = (row.institution_name || '').trim();
+                    newItem.accountCardNumber = (row.account_number || '').trim();
+                    newItem.accountHolder = (row.account_holder || '').trim();
+                }
+                
+                // 메모 타입 필드 추가
+                if (isMemo) {
+                    newItem.type = 'memo';
+                    newItem.memo = (row.content || '').trim();
+                    if (row.tags && row.tags.trim()) {
+                        newItem.tags = row.tags.split(',').map(t => t.trim()).filter(t => t);
+                    }
+                }
                 
                 const addedItemId = onAddItem(newItem);
                 // onAddItem이 반환하는 ID 사용
                 const addedItem = existingItems.find(i => i.id === addedItemId) || newItem;
-                siteMap[siteKey] = {
+                siteMap[itemKey] = {
                     item: { ...addedItem, id: addedItemId || `temp_${Date.now()}` },
                     needsUpdate: false
                 };
@@ -222,59 +367,66 @@ export const processExcelData = (rows, existingCategories, existingItems, onCrea
         }
 
         // accounts 초기화 확인
-        if (!siteMap[siteKey].item.accounts) {
-            siteMap[siteKey].item.accounts = [];
+        if (!siteMap[itemKey].item.accounts) {
+            siteMap[itemKey].item.accounts = [];
         }
 
-        // field_name이 'username' 또는 'password'인 경우 account로 처리
-        // 아니면 customField로 처리
-        const fieldNameLower = (row.field_name || '').trim().toLowerCase();
-        
-        if (fieldNameLower === 'username' || fieldNameLower === 'user') {
-            // username인 경우: 같은 username이 있으면 업데이트, 없으면 새 account 생성
-            const username = String(row.field_value).trim();
-            const existingAccountIndex = siteMap[siteKey].item.accounts.findIndex(
-                acc => acc.username === username
-            );
+        // 웹 타입인 경우에만 username/password 처리
+        if (isWeb) {
+            // username 필드 처리
+            if (row.username && row.username.trim()) {
+                const username = row.username.trim();
+                const existingAccountIndex = siteMap[itemKey].item.accounts.findIndex(
+                    acc => acc.username === username
+                );
+                
+                if (existingAccountIndex >= 0) {
+                    // 기존 account 업데이트
+                    siteMap[itemKey].item.accounts[existingAccountIndex].username = username;
+                } else {
+                    // 새 account 생성
+                    const accountId = `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    siteMap[itemKey].item.accounts.push({
+                        id: accountId,
+                        username: username,
+                        password: (row.password || '').trim(),
+                        memo: '',
+                        isVerified: false,
+                        verifiedAt: null
+                    });
+                    stats.accountsAdded++;
+                }
+                siteMap[itemKey].needsUpdate = true;
+            }
             
-            if (existingAccountIndex >= 0) {
-                // 기존 account 업데이트
-                siteMap[siteKey].item.accounts[existingAccountIndex].username = username;
-            } else {
-                // 새 account 생성
-                const accountId = `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                siteMap[siteKey].item.accounts.push({
-                    id: accountId,
-                    username: username,
-                    password: '',
-                    memo: '',
-                    isVerified: false,
-                    verifiedAt: null
-                });
-                stats.accountsAdded++;
+            // password 필드 처리 (username과 독립적으로)
+            if (row.password && row.password.trim()) {
+                if (siteMap[itemKey].item.accounts.length > 0) {
+                    const lastAccount = siteMap[itemKey].item.accounts[siteMap[itemKey].item.accounts.length - 1];
+                    if (!lastAccount.password) {
+                        lastAccount.password = row.password.trim();
+                    }
+                } else if (row.username && row.username.trim()) {
+                    // username과 함께 처리됨 (위에서)
+                } else {
+                    // account가 없으면 새로 생성
+                    const accountId = `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                    siteMap[itemKey].item.accounts.push({
+                        id: accountId,
+                        username: '',
+                        password: row.password.trim(),
+                        memo: '',
+                        isVerified: false,
+                        verifiedAt: null
+                    });
+                    stats.accountsAdded++;
+                }
+                siteMap[itemKey].needsUpdate = true;
             }
-            siteMap[siteKey].needsUpdate = true;
-        } else if (fieldNameLower === 'password' || fieldNameLower === 'pw') {
-            // password인 경우: 마지막 account에 password 추가
-            if (siteMap[siteKey].item.accounts.length > 0) {
-                const lastAccount = siteMap[siteKey].item.accounts[siteMap[siteKey].item.accounts.length - 1];
-                lastAccount.password = String(row.field_value).trim();
-            } else {
-                // account가 없으면 새로 생성
-                const accountId = `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-                siteMap[siteKey].item.accounts.push({
-                    id: accountId,
-                    username: '',
-                    password: String(row.field_value).trim(),
-                    memo: '',
-                    isVerified: false,
-                    verifiedAt: null
-                });
-                stats.accountsAdded++;
-            }
-            siteMap[siteKey].needsUpdate = true;
-        } else if (row.field_name && row.field_name.trim() && row.field_value) {
-            // 그 외는 Custom Field로 처리
+        }
+
+        // field_name과 field_value가 있는 경우 Custom Field로 처리
+        if (row.field_name && row.field_name.trim() && row.field_value) {
             const field = {
                 id: `field_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
                 field_name: row.field_name.trim(),
@@ -282,21 +434,21 @@ export const processExcelData = (rows, existingCategories, existingItems, onCrea
             };
 
             // 중복 체크 (같은 field_name이 이미 있으면 업데이트)
-            if (!siteMap[siteKey].item.customFields) {
-                siteMap[siteKey].item.customFields = [];
+            if (!siteMap[itemKey].item.customFields) {
+                siteMap[itemKey].item.customFields = [];
             }
             
-            const existingFieldIndex = siteMap[siteKey].item.customFields.findIndex(
+            const existingFieldIndex = siteMap[itemKey].item.customFields.findIndex(
                 f => f.field_name === row.field_name.trim()
             );
 
             if (existingFieldIndex >= 0) {
-                siteMap[siteKey].item.customFields[existingFieldIndex] = field;
+                siteMap[itemKey].item.customFields[existingFieldIndex] = field;
             } else {
-                siteMap[siteKey].item.customFields.push(field);
+                siteMap[itemKey].item.customFields.push(field);
             }
 
-            siteMap[siteKey].needsUpdate = true;
+            siteMap[itemKey].needsUpdate = true;
             stats.fieldsAdded++;
         }
     });

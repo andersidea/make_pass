@@ -169,3 +169,4 @@ VITE_GOOGLE_CLIENT_ID=your-client-id-here.apps.googleusercontent.com
 - [ ] 수동 동기화 버튼 추가
 
 
+

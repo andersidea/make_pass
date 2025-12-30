@@ -172,3 +172,4 @@ http://localhost:5173/
 **상태**: ✅ **코드 레벨 검증 완료, Google Cloud Console 설정은 사용자 확인 필요**
 
 
+

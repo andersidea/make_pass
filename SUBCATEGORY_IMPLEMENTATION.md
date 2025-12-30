@@ -210,3 +210,4 @@ const financeSubCategories = categories.filter(cat => cat.parentId === 'finance'
 **상태**: ✅ **구현 완료**
 
 
+

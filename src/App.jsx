@@ -336,6 +336,7 @@ function App() {
   const [showExcelUpload, setShowExcelUpload] = useState(false);
   const [botInput, setBotInput] = useState(''); // 하단 봇 입력창
   const [showAddMenu, setShowAddMenu] = useState(false); // 하단 추가 메뉴 표시 여부
+  const [folderPath, setFolderPath] = useState(''); // SecureVault 폴더 경로
 
   // 하단 봇 입력창 변경 시 실시간 검색 (Hooks는 조건부 return 이전에 선언)
   useEffect(() => {
@@ -912,8 +913,15 @@ function App() {
           onUpdateItem={updateItem}
           onUploadComplete={async () => {
             // Google Drive 동기화 트리거
+            // 주의: React 상태 업데이트는 비동기이므로, 약간의 지연 후 최신 items 가져오기
             try {
-              const itemsToSave = items.map(item => {
+              // 상태 업데이트가 완료될 때까지 짧은 대기
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              // 최신 items 가져오기 (vaultHook에서)
+              const currentItems = vaultHook.items;
+              
+              const itemsToSave = currentItems.map(item => {
                 const { accounts, ...rest } = item;
                 let accountsEncrypted = item.accountsEncrypted || '';
                 if (accounts && Array.isArray(accounts) && accounts.length > 0) {
@@ -922,7 +930,8 @@ function App() {
                 return { ...rest, accountsEncrypted };
               });
               
-              // 즉시 저장 (디바운스 없이)
+              // 즉시 저장 (디바운스 없이, 저장 차단 로직 우회를 위해 force 파라미터 없이 호출)
+              // driveSyncManager.saveToDrive는 이미 초기 로드 완료 후에는 저장 차단이 없음
               await driveSyncManager.saveToDrive(itemsToSave);
               toast.success('엑셀 업로드 완료 및 Google Drive 동기화 완료', '업로드 완료');
             } catch (error) {
@@ -953,7 +962,7 @@ function App() {
         onQuickAddNote={handleQuickAddNote}
         syncStatus={syncStatus}
         userProfile={googleAuth.userProfile}
-        folderPath={folderPath}
+        folderPath={folderPath || null}
       />
 
       {/* 메인 콘텐츠 */}

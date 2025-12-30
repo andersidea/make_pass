@@ -175,3 +175,4 @@ VITE_GOOGLE_CLIENT_ID=your-client-id-here.apps.googleusercontent.com
 **버전**: v2.0 (Google Drive 동기화 추가)
 
 
+

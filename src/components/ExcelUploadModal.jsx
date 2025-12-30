@@ -30,10 +30,8 @@ const ExcelUploadModal = ({ onClose, categories, items, onCreateCategory, onAddI
             const fileName = pendingFile.name.toLowerCase();
             let rows = [];
 
-            if (fileName.endsWith('.csv')) {
-                const text = await readFileAsText(pendingFile);
-                rows = parseCSVText(text);
-            } else if (fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
+            // CSV와 XLSX 모두 parseExcelFile로 통합 처리
+            if (fileName.endsWith('.csv') || fileName.endsWith('.xlsx') || fileName.endsWith('.xls')) {
                 rows = await parseExcelFile(pendingFile);
             } else {
                 setError('지원하지 않는 파일 형식입니다. CSV 또는 Excel 파일(.xlsx, .xls)만 지원합니다.');
@@ -43,7 +41,7 @@ const ExcelUploadModal = ({ onClose, categories, items, onCreateCategory, onAddI
             }
 
             if (rows.length === 0) {
-                setError('파일에서 데이터를 찾을 수 없습니다.');
+                setError('파일에서 데이터를 찾을 수 없습니다. 헤더를 확인해주세요.');
                 setIsProcessing(false);
                 setPendingFile(null);
                 return;

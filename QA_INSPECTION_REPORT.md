@@ -486,3 +486,4 @@ const getCategoryFromType = (type) => {
 **상태**: ✅ **품질 보증 통과**
 
 
+
